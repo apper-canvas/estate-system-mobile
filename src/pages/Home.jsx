@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'react-toastify';
+import { useDispatch, useSelector } from 'react-redux';
+import { setProperties, setLoading, setError, setActiveFilter, setSearchQuery } from '../store/propertySlice';
+import { fetchProperties, toggleFavorite } from '../services/propertyService';
 import MainFeature from '../components/MainFeature';
 import getIcon from '../utils/iconUtils';
+import { AuthContext } from '../App';
 
 function Home() {
+  const { isAuthenticated, user } = useContext(AuthContext);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
   
@@ -16,76 +21,36 @@ function Home() {
   const HomeModernIcon = getIcon('Building2');
   const DollarSignIcon = getIcon('DollarSign');
   const CheckCircleIcon = getIcon('CheckCircle');
+  const LoaderIcon = getIcon('Loader');
   
-  // Sample properties data
-  const [properties] = useState([
-    {
-      id: 1,
-      title: "Modern Waterfront Villa",
-      location: "Miami, FL",
-      price: 1250000,
-      bedrooms: 4,
-      bathrooms: 3,
-      area: 2800,
-      type: "house",
-      image: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80"
-    },
-    {
-      id: 2,
-      title: "Downtown Luxury Apartment",
-      location: "New York, NY",
-      price: 850000,
-      bedrooms: 2,
-      bathrooms: 2,
-      area: 1200,
-      type: "apartment",
-      image: "https://images.unsplash.com/photo-1493809842364-78817add7ffb?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80"
-    },
-    {
-      id: 3,
-      title: "Suburban Family Home",
-      location: "Austin, TX",
-      price: 550000,
-      bedrooms: 3,
-      bathrooms: 2.5,
-      area: 2100,
-      type: "house",
-      image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80"
-    },
-    {
-      id: 4,
-      title: "Oceanview Condo",
-      location: "San Diego, CA",
-      price: 690000,
-      bedrooms: 2,
-      bathrooms: 2,
-      area: 1350,
-      type: "condo",
-      image: "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80"
-    },
-    {
-      id: 5,
-      title: "Cityview Penthouse",
-      location: "Chicago, IL",
-      price: 1750000,
-      bedrooms: 3,
-      bathrooms: 3.5,
-      area: 2900,
-      type: "apartment",
-      image: "https://images.unsplash.com/photo-1567767292278-a4f21aa2d36e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80"
-    },
-    {
-      id: 6,
-      title: "Rustic Mountain Retreat",
-      location: "Denver, CO",
-      price: 920000,
-      bedrooms: 4,
-      bathrooms: 3,
-      area: 2600,
-      type: "house",
-      image: "https://images.unsplash.com/photo-1592595896616-c37162298647?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80"
+  // Get properties from Redux store
+  const dispatch = useDispatch();
+  const { properties, loading, error } = useSelector((state) => state.properties);
+  
+  // Fetch properties on component mount and when filters change
+  useEffect(() => {
+    const loadProperties = async () => {
+      try {
+        dispatch(setLoading(true));
+        const options = {
+          searchQuery,
+          propertyType: activeFilter === 'all' ? '' : activeFilter,
+        };
+        
+        const data = await fetchProperties(options);
+        dispatch(setProperties(data));
+      } catch (err) {
+        console.error('Failed to load properties:', err);
+        dispatch(setError(err.message));
+        toast.error('Failed to load properties. Please try again.');
+      }
+    };
+    
+    // Only fetch if authenticated
+    if (isAuthenticated) {
+      loadProperties();
     }
-  ]);
+  }, [dispatch, activeFilter, searchQuery, isAuthenticated]);
   
   // Filter properties based on search query and active filter
   const filteredProperties = properties.filter(property => {
@@ -102,10 +67,31 @@ function Home() {
   // Handle search input change
   const handleSearchChange = (e) => {
     setSearchQuery(e.target.value);
+    dispatch(setSearchQuery(e.target.value));
+  };
+  
+  // Handle filter change
+  const handleFilterChange = (filter) => {
+    setActiveFilter(filter);
+    dispatch(setActiveFilter(filter));
   };
   
   // Toggle favorite property
-  const handleFavorite = (propertyId) => {
+  const handleFavorite = async (propertyId, currentFavorite) => {
+    try {
+      if (!isAuthenticated) {
+        toast.warning("Please login to save favorites");
+        return;
+      }
+      
+      // Optimistic update in UI
+      dispatch(setLoading(true));
+      await toggleFavorite(propertyId, !currentFavorite);
+      
+      // Refresh properties to get updated data
+      await fetchProperties({ searchQuery, propertyType: activeFilter === 'all' ? '' : activeFilter });
+      dispatch(setLoading(false));
+    } catch (err) {
     toast.success("Property added to favorites!");
   };
   
@@ -187,7 +173,7 @@ function Home() {
         <div className="container mx-auto px-4">
           <div className="flex overflow-x-auto scrollbar-hide py-2 gap-2">
             <button 
-              onClick={() => setActiveFilter('all')} 
+              onClick={() => handleFilterChange('all')} 
               className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
                 activeFilter === 'all' 
                   ? 'bg-primary text-white' 
@@ -197,7 +183,7 @@ function Home() {
               All Properties
             </button>
             <button 
-              onClick={() => setActiveFilter('house')} 
+              onClick={() => handleFilterChange('house')} 
               className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap flex items-center gap-1.5 transition-all ${
                 activeFilter === 'house' 
                   ? 'bg-primary text-white' 
@@ -207,7 +193,7 @@ function Home() {
               <HomeIcon className="w-4 h-4" /> Houses
             </button>
             <button 
-              onClick={() => setActiveFilter('apartment')} 
+              onClick={() => handleFilterChange('apartment')} 
               className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap flex items-center gap-1.5 transition-all ${
                 activeFilter === 'apartment' 
                   ? 'bg-primary text-white' 
@@ -217,7 +203,7 @@ function Home() {
               <BuildingIcon className="w-4 h-4" /> Apartments
             </button>
             <button 
-              onClick={() => setActiveFilter('condo')} 
+              onClick={() => handleFilterChange('condo')} 
               className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap flex items-center gap-1.5 transition-all ${
                 activeFilter === 'condo' 
                   ? 'bg-primary text-white' 
@@ -245,7 +231,31 @@ function Home() {
           </div>
         </div>
         
-        {filteredProperties.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-16">
+            <div className="inline-flex justify-center items-center mb-4">
+              <LoaderIcon className="w-10 h-10 text-primary animate-spin" />
+            </div>
+            <h3 className="text-xl font-medium">Loading properties...</h3>
+          </div>
+        ) : error ? (
+          <div className="text-center py-16">
+            <div className="inline-flex justify-center items-center w-24 h-24 rounded-full bg-red-100 dark:bg-red-900/30 text-red-500 mb-6">
+              <AlertTriangleIcon className="w-10 h-10" />
+            </div>
+            <h3 className="text-xl font-medium mb-2">Something went wrong</h3>
+            <p className="text-surface-500 dark:text-surface-400 max-w-md mx-auto mb-6">
+              {error}
+            </p>
+            <button 
+              onClick={() => {
+                dispatch(setLoading(true));
+                dispatch(setError(null));
+                fetchProperties({ searchQuery, propertyType: activeFilter === 'all' ? '' : activeFilter });
+              }}
+              className="btn btn-primary">Try Again</button>
+          </div>
+        ) : filteredProperties.length === 0 ? (
           <div className="text-center py-12">
             <div className="inline-flex justify-center items-center w-24 h-24 rounded-full bg-surface-100 dark:bg-surface-800 mb-6">
               <SearchIcon className="w-10 h-10 text-surface-400" />
@@ -278,7 +288,7 @@ function Home() {
                   <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center">
                     <span className="text-white font-semibold text-lg text-shadow">${formatPrice(property.price)}</span>
                     <button 
-                      onClick={() => handleFavorite(property.id)}
+                      onClick={() => handleFavorite(property.Id, property.is_favorite)}
                       className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white p-2 rounded-full transition-all"
                       aria-label="Add to favorites"
                     >
