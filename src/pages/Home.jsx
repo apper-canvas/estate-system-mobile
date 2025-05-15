@@ -123,7 +123,6 @@ function Home() {
   return (
     <div className="min-h-screen bg-surface-50 dark:bg-surface-900 transition-colors duration-300">
       {/* Hero Section */}
-      <div className="relative bg-gradient-to-r from-primary/80 to-secondary/80 overflow-hidden">
         <div className="absolute inset-0 z-0 opacity-20 bg-[url('https://images.unsplash.com/photo-1582407947304-fd86f028f716?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=2340&q=80')]"></div>
         <div className="container mx-auto px-4 py-12 md:py-20 relative z-10">
           <div className="max-w-4xl mx-auto text-center">
